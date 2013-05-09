@@ -13,7 +13,7 @@ npm install bower -g
 Inside your project run:
 
 ```
-bower install x-tag-switch
+bower install x-tag-spinner
 ```
 
 This downloads the component and dependencies to ./components
@@ -21,18 +21,18 @@ This downloads the component and dependencies to ./components
 
 ## Syntax
 
-Switch provides you a slick iPhone-esque toggle switch with a single line
+A loading spinner with optional status text
 
 ```
-	<x-switch onText="Active" offText="Inactive"></x-switch>
+	<x-spinner></x-spinner>
 ```
 
 ## Usage
 
-```
-	var mySwitch = document.createElement('x-switch');
-	mySwitch.toggle(); // toggles the checked property and visual appearance
-	mySwitch.checked = true;
-```
+Optional attributes:
+* `duration` - Time in seconds it should take for spinner to complete one rotation.
+* `label` - Text to display within the spinner.
+* `reverse` - Spinner rotation defaults to clockwise. When present, spinner will rotate counterclockwise.
+* `src` - The URL of an image to use in place of the CSS spinner effect.
 
 
