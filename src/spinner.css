@@ -1,0 +1,42 @@
+x-spinner {
+  display: inline-block;
+  position: relative;
+  -moz-box-sizing: border-box;
+  width: 64px;
+  line-height: 100%;
+  font-family: sans-serif;
+  color: #000;
+  overflow: hidden;
+}
+x-spinner b {
+  -moz-box-sizing: border-box;
+  display: block;
+  font-size: inherit;
+  height: 100%;
+  left: 0;
+  font-size: .20em;
+  overflow: hidden;
+  padding: 0 15%;
+  position: absolute;
+  text-align: center;
+  text-overflow: ellipsis;
+  top: 0;
+  white-space: nowrap;
+  width: 100%;
+  word-wrap: break-word;
+  z-index: 1;
+  /*pointer-events: none;*/
+}
+x-spinner img {
+  -moz-box-sizing: border-box;
+  animation: 1s spin infinite linear;
+  height: auto;
+  width: 100%;
+}
+x-spinner:not([src]) img {
+  border-radius: 100%;
+  border: solid transparent;
+  border-top-color: inherit;
+}
+
+@keyframes spin { to { transform: rotate(1turn); } }
