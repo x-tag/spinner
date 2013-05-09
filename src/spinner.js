@@ -33,7 +33,12 @@
       duration: {
         attribute: {},
         set: function(duration) {
-          this.xtag.img.style.animationDuration = (+duration || 1) + 's';
+          var val = (+duration || 1) + 's';
+          this.xtag.img.style[xtag.prefix.js + 'AnimationDuration'] = val;
+          this.xtag.img.style.animationDuration = val;
+        },
+        get: function() {
+          return +this.getAttribute('duration');
         }
       },
       reverse: {
@@ -41,7 +46,9 @@
           boolean: true
         },
         set: function(val) {
-          this.xtag.img.style.animationDirection = val ? 'reverse' : 'normal';
+          val = val ? 'reverse' : 'normal';
+          this.xtag.img.style[xtag.prefix.js + 'AnimationDirection'] = val;
+          this.xtag.img.style.animationDirection = val;
         }
       },
       src: {
