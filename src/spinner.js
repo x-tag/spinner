@@ -23,7 +23,15 @@
         updateSize(this);
       }
     },
+    methods: {
+      toggle: function(){
+        this.paused = this.paused ? false : true;
+      }
+    },
     accessors: {
+      paused: {
+        attribute: { boolean: true }
+      },
       label: {
         attribute: {},
         set: function(text) {
