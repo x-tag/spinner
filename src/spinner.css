@@ -36,6 +36,15 @@ x-spinner img {
   height: auto;
   width: 100%;
 }
+
+
+    x-spinner[paused] img {
+		-webkit-animation-play-state: paused;
+		-moz-animation-play-state: paused;
+		-ms-animation-play-state: paused;
+		animation-play-state: paused;
+	}
+
 x-spinner:not([src]) img {
   border-radius: 100%;
   border: solid transparent;
