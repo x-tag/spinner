@@ -1,14 +1,14 @@
 {
 	"name": "Spinner",
 	"tagName": "x-spinner",
-	"version": "0.1.8",
+	"version": "0.2.0",
 	"author": "Potch",
 	"description": "A loading spinner with optional status text",
 	"images": [],
 	"categories": [
 		"ui"
 	],
-	"demo": "demo",
+	"demo": "demo/index.html",
 	"compatibility": {
 		"firefox": 5,
 		"chrome": 4,
