@@ -16,9 +16,20 @@
 
 <body>
 
-	<h2>Create a Demo</h2>
+  <button id="toggle">Toggle Spinner</button>
+
+	<x-spinner id="spinner" fade></x-spinner>
 
 
 </body>
+
+<script>
+  var spinner = document.getElementById('spinner');
+  xtag.addEvents(document, {
+    'tap:delegate(#toggle)': function(){
+      spinner.toggle();
+    }
+  });
+</script>
 
 </html>
