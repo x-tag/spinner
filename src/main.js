@@ -21,18 +21,21 @@
       fade: {
         attribute: { boolean: true }
       },
-      spinning: {
-        attribute: { boolean: true },
-        set: function(value){
-          if (value) this.spin();
-          else this.stop();
-        }
+      reverse: {
+        attribute: { boolean: true }
       },
       src: {
         attribute: { property: 'img' }
       },
       label: {
         attribute: { property: 'center' }
+      },
+      spinning: {
+        attribute: { boolean: true },
+        set: function(value){
+          if (value) this.spin();
+          else this.stop();
+        }
       },
       duration: {
         attribute: {},
