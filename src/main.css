@@ -1,9 +1,4 @@
 
-x-spinner {
-  display: block;
-  width: 1em;
-}
-
 x-spinner, x-spinner img {
   -webkit-box-sizing: border-box;
 	-moz-box-sizing: border-box;
@@ -11,22 +6,17 @@ x-spinner, x-spinner img {
 	box-sizing: border-box;
 }
 
-x-spinner img {
-  display: block;
-  width: 100%;
-  height: auto;
-  border-radius: 50%;
-  border: 3px solid rgba(0, 0, 0, 0.2);
-  border-left-color: #000;
-  -webkit-box-sizing: border-box;
-	-moz-box-sizing: border-box;
-	-ms-box-sizing: border-box;
-	box-sizing: border-box;
-  -webkit-box-shadow: 0 0 6px 8px rgba(255,255,255,0.9);
-  box-shadow: 0 0 6px 8px rgba(255,255,255,0.9);
+x-spinner {
+  display: table;
+  text-align: center;
 }
 
-x-spinner[fade] img {
+x-spinner .x-spinner-center {
+  display: table-cell;
+  vertical-align: middle;
+}
+
+x-spinner[fade] {
   opacity: 0;
   -webkit-transition: opacity 0.6s;
 	-moz-transition: opacity 0.6s;
@@ -34,14 +24,39 @@ x-spinner[fade] img {
 	transition: opacity 0.6s;
 }
 
-x-spinner[fade][spinning] img {
+x-spinner[fade][spinning] {
   opacity: 1;
+}
+
+x-spinner .x-spinner-center[label]:after {
+  display: block;
+  content: attr(label);
+}
+
+x-spinner img {
+  display: block;
+  width: 1em;
+  height: auto;
+  margin: 0 auto;
+  border-radius: 50%;
+  border: 3px solid rgba(0, 0, 0, 0.15);
+  border-left-color: #000;
+  -webkit-box-sizing: border-box;
+	-moz-box-sizing: border-box;
+	-ms-box-sizing: border-box;
+	box-sizing: border-box;
 }
 
 x-spinner[x-spinner-spinning] img {
   -webkit-animation: x-spinner-rotate 1s infinite linear;
   -ms-animation: x-spinner-rotate 1s infinite linear;
   animation: x-spinner-rotate 1s infinite linear;
+}
+
+x-spinner[reverse] img {
+  -webkit-animation-direction: reverse;
+  -ms-animation-direction: reverse;
+  animation-direction: reverse;
 }
 
 @-webkit-keyframes x-spinner-rotate {

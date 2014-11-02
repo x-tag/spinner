@@ -1,17 +1,18 @@
 (function(){
   
-  var img = document.createElement('img');
-      img.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+  var frag = xtag.createFragment('<div class="x-spinner-center"><img class="x-spin-element" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" /></div>');
   
   xtag.register('x-spinner', {
     lifecycle: {
       created: function() {
-        this.xtag.img = this.appendChild(img.cloneNode(true));
+        this.appendChild(frag.cloneNode(true));
+        this.xtag.center = this.lastElementChild;
+        this.xtag.img = this.lastElementChild.firstElementChild;
       }
     },
     events: {
       transitionend: function(e){
-        if (e.target == this.xtag.img && e.propertyName == 'opacity' && !this.hasAttribute('spinning')) {
+        if (e.propertyName == 'opacity' && !this.hasAttribute('spinning')) {
           this.removeAttribute('x-spinner-spinning');
         }
       }
@@ -21,23 +22,36 @@
         attribute: { boolean: true }
       },
       spinning: {
-        attribute: { boolean: true }
+        attribute: { boolean: true },
+        set: function(value){
+          if (value) this.spin();
+          else this.stop();
+        }
+      },
+      src: {
+        attribute: { property: 'img' }
+      },
+      label: {
+        attribute: { property: 'center' }
+      },
+      duration: {
+        attribute: {},
+        set: function(value){
+          this.xtag.img.style.animationDuration = this.xtag.img.style[xtag.prefix.lowercase + 'AnimationDuration'] = value;
+        }
       }
     }, 
     methods: {
-      spin: function(duration){
-        this.spinning = true;
+      spin: function(){
+        if (!this.hasAttribute('spinning')) this.spinning = true;
         this.setAttribute('x-spinner-spinning', '');
-        clearTimeout(this.xtag.spinTimer);
-        if (duration) this.xtag.spinTimer = setTimeout(this.stop, duration);
       },
       stop: function(){
-        clearTimeout(this.xtag.spinTimer);
+        if (this.hasAttribute('spinning')) this.spinning = false; 
         if (!this.fade) this.removeAttribute('x-spinner-spinning');
-        this.spinning = false; 
       },
-      toggle: function(duration){
-        this[this.spinning ? 'stop' : 'spin'](duration);
+      toggle: function(){
+        this[this.spinning ? 'stop' : 'spin']();
       }
     }
   });
