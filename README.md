@@ -1,32 +1,33 @@
-# About
 
-This repo is an X-Tag custom web-component stub that can be used as a starting point when building new elements.  It provides that basic tools and grunt tasks to get started.
+##Install
 
-# Yo Generator
+Libraries
+- Node / NPM
+- Bower (Package Manager)
+-- `npm install bower -g`
 
-If you're creating a new component, checkout our Yeoman Generator.
+Inside your project run:
+`bower install x-tag-spinner`
 
-```
-https://github.com/x-tag/yo-x-tag-generator
-```
+##Syntax
 
-# Dev Setup
+The following markup will produce a loading spinner with optional label text
 
-```
-Fork this repo, rename it, then clone it.
-
-$ npm install	// install bower tasks
-$ bower install	// install components
-$ grunt build   // build the dependencies
-
+```html
+<x-spinner label="Loading"></x-spinner>
 ```
 
-# Links
+##Usage
 
-[X-Tags Docs](http://x-tags.org/docs)
+Methods:
+- `spin` - starts spinning the element
+- `stop` - stops spinning the element
+- `toggle` - toggles between spinning and stopped states
 
-[Guide for creating X-Tag Components](https://github.com/x-tag/core/wiki/Creating-X-Tag-Components)
-
-[Using X-Tag components in your applications](https://github.com/x-tag/core/wiki/Using-our-Web-Components-in-Your-Application)
+Attributes:
+- `duration` - Time in seconds it should take for spinner to complete one rotation.
+- `label` - Text to display within the spinner.
+- `reverse` - Spinner rotation defaults to clockwise. When present, spinner will rotate counterclockwise.
+- `src` - The URL of an image to use in place of the CSS spinner effect.
 
 
