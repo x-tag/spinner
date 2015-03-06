@@ -7,13 +7,22 @@ x-spinner, x-spinner img {
 }
 
 x-spinner {
-  display: table;
+  display: -webkit-box;      
+	display: -moz-box;         
+	display: -ms-flexbox;      
+	display: -webkit-flex;     
+	display: flex;
+  -webkit-box-pack: center;
+  -moz-box-pack: center;
+  -webkit-justify-content: center;
+  -ms-flex-pack: center;
+  justify-content: center;
+  -webkit-box-align: center;
+  -moz-box-align: center;
+  -webkit-align-items: center;
+  -ms-flex-align: center;
+  align-items: center;
   text-align: center;
-}
-
-x-spinner .x-spinner-center {
-  display: table-cell;
-  vertical-align: middle;
 }
 
 x-spinner[fade] {
@@ -39,8 +48,10 @@ x-spinner img {
   height: auto;
   margin: 0 auto;
   border-radius: 50%;
-  border: 3px solid rgba(0, 0, 0, 0.15);
-  border-left-color: #000;
+  border: 3px solid;
+  border-color: transparent;
+  border-left-color: inherit;
+  border-right-color: inherit;
   -webkit-box-sizing: border-box;
 	-moz-box-sizing: border-box;
 	-ms-box-sizing: border-box;

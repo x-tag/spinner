@@ -33,6 +33,7 @@
       spinning: {
         attribute: { boolean: true },
         set: function(value){
+          console.log(value);
           if (value) this.spin();
           else this.stop();
         }
