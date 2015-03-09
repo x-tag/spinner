@@ -26,15 +26,22 @@ x-spinner {
 }
 
 x-spinner[fade] {
-  opacity: 0;
   -webkit-transition: opacity 0.6s;
 	-moz-transition: opacity 0.6s;
 	-ms-transition: opacity 0.6s;
 	transition: opacity 0.6s;
 }
 
-x-spinner[fade][spinning] {
+x-spinner[fade]:not([spinning]) {
+  opacity: 0;
+}
+
+x-spinner[transition="fade-in"] {
   opacity: 1;
+}
+
+x-spinner[transition="fade-out"] {
+  opacity: 0;
 }
 
 x-spinner .x-spinner-center[label]:after {
@@ -58,7 +65,7 @@ x-spinner img {
 	box-sizing: border-box;
 }
 
-x-spinner[x-spinner-spinning] img {
+x-spinner[spinning] img {
   -webkit-animation: x-spinner-rotate 1s infinite linear;
   -ms-animation: x-spinner-rotate 1s infinite linear;
   animation: x-spinner-rotate 1s infinite linear;

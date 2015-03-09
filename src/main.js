@@ -10,13 +10,6 @@
         this.xtag.img = this.lastElementChild.firstElementChild;
       }
     },
-    events: {
-      transitionend: function(e){
-        if (e.propertyName == 'opacity' && !this.hasAttribute('spinning')) {
-          this.removeAttribute('x-spinner-spinning');
-        }
-      }
-    },
     accessors: {
       fade: {
         attribute: { boolean: true }
@@ -46,12 +39,18 @@
     }, 
     methods: {
       spin: function(){
-        if (!this.hasAttribute('spinning')) this.spinning = true;
-        this.setAttribute('x-spinner-spinning', '');
+        if (!this.hasAttribute('spinning')) {
+          this.spinning = true;
+          if (this.fade) xtag.transition(this, 'fade-in');
+        }
       },
       stop: function(){
-        if (this.hasAttribute('spinning')) this.spinning = false; 
-        if (!this.fade) this.removeAttribute('x-spinner-spinning');
+        if (this.hasAttribute('spinning')) {
+          if (this.fade) xtag.transition(this, 'fade-out', {
+            after: function(){ this.spinning = false; }
+          });
+          else this.spinning = false; 
+        }
       },
       toggle: function(){
         this[this.spinning ? 'stop' : 'spin']();
