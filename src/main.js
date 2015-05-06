@@ -1,5 +1,5 @@
 (function(){
-  
+   
   var frag = xtag.createFragment('<div class="x-spinner-center"><img class="x-spin-element" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" /></div>');
   
   xtag.register('x-spinner', {
@@ -25,9 +25,8 @@
       },
       spinning: {
         attribute: { boolean: true },
-        set: function(value){
-          if (value) this.spin();
-          else this.stop();
+        set: function(value, old){
+          if (value != old) value ? this.spin() : this.stop();
         }
       },
       duration: {
@@ -39,23 +38,19 @@
     }, 
     methods: {
       spin: function(){
-        if (!this.hasAttribute('spinning')) {
-          this.spinning = true;
-          if (this.fade) xtag.transition(this, 'fade-in');
-        }
+        this.spinning = true;
+        if (this.fade) xtag.transition(this, 'fade-in');
       },
       stop: function(){
-        if (this.hasAttribute('spinning')) {
-          if (this.fade) xtag.transition(this, 'fade-out', {
-            after: function(){ this.spinning = false; }
-          });
-          else this.spinning = false; 
-        }
+        if (this.fade) xtag.transition(this, 'fade-out', {
+          after: function(){ this.spinning = false; }
+        });
+        else this.spinning = false; 
       },
       toggle: function(){
-        this[this.spinning ? 'stop' : 'spin']();
+        this.spinning ? this.stop() : this.spin();
       }
-    }
+    } 
   });
 
 })();

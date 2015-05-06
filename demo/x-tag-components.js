@@ -666,10 +666,6 @@ if (typeof WeakMap === 'undefined') {
 
   global.JsMutationObserver = JsMutationObserver;
 
-  // Provide unprefixed MutationObserver with native or JS implementation
-  if (!global.MutationObserver && global.WebKitMutationObserver)
-    global.MutationObserver = global.WebKitMutationObserver;
-
   if (!global.MutationObserver)
     global.MutationObserver = JsMutationObserver;
 
@@ -677,13 +673,16 @@ if (typeof WeakMap === 'undefined') {
 })(this);
 
 /*
- * Copyright 2013 The Polymer Authors. All rights reserved.
- * Use of this source code is governed by a BSD-style
- * license that can be found in the LICENSE file.
+ * Copyright (c) 2014 The Polymer Project Authors. All rights reserved.
+ * This code may only be used under the BSD style license found at http://polymer.github.io/LICENSE.txt
+ * The complete set of authors may be found at http://polymer.github.io/AUTHORS.txt
+ * The complete set of contributors may be found at http://polymer.github.io/CONTRIBUTORS.txt
+ * Code distributed by Google as part of the polymer project is also
+ * subject to an additional IP rights grant found at http://polymer.github.io/PATENTS.txt
  */
 
 /**
- * Implements `document.register`
+ * Implements `document.registerElement`
  * @module CustomElements
 */
 
@@ -704,7 +703,9 @@ var flags = scope.flags;
 // native document.registerElement?
 
 var hasNative = Boolean(document.registerElement);
-var useNative = !flags.register && hasNative;
+// For consistent timing, use native custom elements only when not polyfilling
+// other key related web components features.
+var useNative = !flags.register && hasNative && !window.ShadowDOMPolyfill && (!window.HTMLImports || HTMLImports.useNative);
 
 if (useNative) {
 
@@ -714,14 +715,16 @@ if (useNative) {
   // exports
   scope.registry = {};
   scope.upgradeElement = nop;
-  
+
   scope.watchShadow = nop;
   scope.upgrade = nop;
   scope.upgradeAll = nop;
   scope.upgradeSubtree = nop;
   scope.observeDocument = nop;
   scope.upgradeDocument = nop;
+  scope.upgradeDocumentTree = nop;
   scope.takeRecords = nop;
+  scope.reservedTagList = [];
 
 } else {
 
@@ -778,6 +781,10 @@ if (useNative) {
       // offer guidance)
       throw new Error('document.registerElement: first argument (\'name\') must contain a dash (\'-\'). Argument provided was \'' + String(name) + '\'.');
     }
+    // prevent registering reserved names
+    if (isReservedTag(name)) {
+      throw new Error('Failed to execute \'registerElement\' on \'Document\': Registration failed for type \'' + String(name) + '\'. The type name is invalid.');
+    }
     // elements may only be registered once
     if (getRegisteredDefinition(name)) {
       throw new Error('DuplicateDefinitionError: a type with name \'' + String(name) + '\' is already registered');
@@ -816,10 +823,23 @@ if (useNative) {
     // if initial parsing is complete
     if (scope.ready) {
       // upgrade any pre-existing nodes of this type
-      scope.upgradeAll(document);
+      scope.upgradeDocumentTree(document);
     }
     return definition.ctor;
   }
+
+  function isReservedTag(name) {
+    for (var i = 0; i < reservedTagList.length; i++) {
+      if (name === reservedTagList[i]) {
+        return true;
+      }
+    }
+  }
+
+  var reservedTagList = [
+    'annotation-xml', 'color-profile', 'font-face', 'font-face-src',
+    'font-face-uri', 'font-face-format', 'font-face-name', 'missing-glyph'
+  ];
 
   function ancestry(extnds) {
     var extendee = getRegisteredDefinition(extnds);
@@ -855,7 +875,11 @@ if (useNative) {
       // work out prototype when using type-extension
       if (definition.is) {
         var inst = document.createElement(definition.tag);
-        nativePrototype = Object.getPrototypeOf(inst);
+        var expectedPrototype = Object.getPrototypeOf(inst);
+        // only set nativePrototype if it will actually appear in the definition's chain
+        if (expectedPrototype === definition.prototype) {
+          nativePrototype = expectedPrototype;
+        }
       }
       // ensure __proto__ reference is installed at each point on the prototype
       // chain.
@@ -864,13 +888,13 @@ if (useNative) {
       // limited support for prototype traversal.
       var proto = definition.prototype, ancestor;
       while (proto && (proto !== nativePrototype)) {
-        var ancestor = Object.getPrototypeOf(proto);
+        ancestor = Object.getPrototypeOf(proto);
         proto.__proto__ = ancestor;
         proto = ancestor;
       }
+      // cache this in case of mixin
+      definition.native = nativePrototype;
     }
-    // cache this in case of mixin
-    definition.native = nativePrototype;
   }
 
   // SECTION 4
@@ -890,17 +914,16 @@ if (useNative) {
     if (definition.is) {
       element.setAttribute('is', definition.is);
     }
-    // remove 'unresolved' attr, which is a standin for :unresolved.
-    element.removeAttribute('unresolved');
     // make 'element' implement definition.prototype
     implement(element, definition);
     // flag as upgraded
     element.__upgraded__ = true;
-    // there should never be a shadow root on element at this point
-    // we require child nodes be upgraded before `created`
-    scope.upgradeSubtree(element);
     // lifecycle management
     created(element);
+    // attachedCallback fires in tree order, call before recursing
+    scope.insertedNode(element);
+    // there should never be a shadow root on element at this point
+    scope.upgradeSubtree(element);
     // OUTPUT
     return element;
   }
@@ -925,11 +948,9 @@ if (useNative) {
     var used = {};
     // start with inSrc
     var p = inSrc;
-    // sometimes the default is HTMLUnknownElement.prototype instead of
-    // HTMLElement.prototype, so we add a test
-    // the idea is to avoid mixing in native prototypes, so adding
-    // the second test is WLOG
-    while (p !== inNative && p !== HTMLUnknownElement.prototype) {
+    // The default is HTMLElement.prototype, so we add a test to avoid mixing in
+    // native prototypes
+    while (p !== inNative && p !== HTMLElement.prototype) {
       var keys = Object.getOwnPropertyNames(p);
       for (var i=0, k; k=keys[i]; i++) {
         if (!used[k]) {
@@ -972,6 +993,7 @@ if (useNative) {
   // https://dvcs.w3.org/hg/webcomponents/raw-file/tip/spec/custom/
   // index.html#dfn-attribute-changed-callback
   function changeAttribute(name, value, operation) {
+    name = name.toLowerCase();
     var oldValue = this.getAttribute(name);
     operation.apply(this, arguments);
     var newValue = this.getAttribute(name);
@@ -1001,21 +1023,55 @@ if (useNative) {
     };
   }
 
+  var HTML_NAMESPACE = 'http://www.w3.org/1999/xhtml';
+  function createElementNS(namespace, tag, typeExtension) {
+    // NOTE: we do not support non-HTML elements,
+    // just call createElementNS for non HTML Elements
+    if (namespace === HTML_NAMESPACE) {
+      return createElement(tag, typeExtension);
+    } else {
+      return domCreateElementNS(namespace, tag);
+    }
+  }
+
   function createElement(tag, typeExtension) {
     // TODO(sjmiles): ignore 'tag' when using 'typeExtension', we could
     // error check it, or perhaps there should only ever be one argument
     var definition = getRegisteredDefinition(typeExtension || tag);
     if (definition) {
-      return new definition.ctor();
+      if (tag == definition.tag && typeExtension == definition.is) {
+        return new definition.ctor();
+      }
+      // Handle empty string for type extension.
+      if (!typeExtension && !definition.is) {
+        return new definition.ctor();
+      }
     }
-    return domCreateElement(tag);
+
+    if (typeExtension) {
+      var element = createElement(tag);
+      element.setAttribute('is', typeExtension);
+      return element;
+    }
+    var element = domCreateElement(tag);
+    // Custom tags should be HTMLElements even if not upgraded.
+    if (tag.indexOf('-') >= 0) {
+      implement(element, HTMLElement);
+    }
+    return element;
   }
 
   function upgradeElement(element) {
     if (!element.__upgraded__ && (element.nodeType === Node.ELEMENT_NODE)) {
-      var type = element.getAttribute('is') || element.localName;
-      var definition = getRegisteredDefinition(type);
-      return definition && upgrade(element, definition);
+      var is = element.getAttribute('is');
+      var definition = getRegisteredDefinition(is || element.localName);
+      if (definition) {
+        if (is && definition.tag == element.localName) {
+          return upgrade(element, definition);
+        } else if (!is && !definition.extends) {
+          return upgrade(element, definition);
+        }
+      }
     }
   }
 
@@ -1030,6 +1086,7 @@ if (useNative) {
   // capture native createElement before we override it
 
   var domCreateElement = document.createElement.bind(document);
+  var domCreateElementNS = document.createElementNS.bind(document);
 
   // capture native cloneNode before we override it
 
@@ -1039,13 +1096,14 @@ if (useNative) {
 
   document.registerElement = register;
   document.createElement = createElement; // override
+  document.createElementNS = createElementNS; // override
   Node.prototype.cloneNode = cloneNode; // override
 
   scope.registry = registry;
 
   /**
    * Upgrade an element to a custom element. Upgrading an element
-   * causes the custom prototype to be applied, an `is` attribute 
+   * causes the custom prototype to be applied, an `is` attribute
    * to be attached (as needed), and invocation of the `readyCallback`.
    * `upgrade` does nothing if the element is already upgraded, or
    * if it matches no registered custom tag name.
@@ -1057,6 +1115,33 @@ if (useNative) {
   scope.upgrade = upgradeElement;
 }
 
+// Create a custom 'instanceof'. This is necessary when CustomElements
+// are implemented via a mixin strategy, as for example on IE10.
+var isInstance;
+if (!Object.__proto__ && !useNative) {
+  isInstance = function(obj, ctor) {
+    var p = obj;
+    while (p) {
+      // NOTE: this is not technically correct since we're not checking if
+      // an object is an instance of a constructor; however, this should
+      // be good enough for the mixin strategy.
+      if (p === ctor.prototype) {
+        return true;
+      }
+      p = p.__proto__;
+    }
+    return false;
+  }
+} else {
+  isInstance = function(obj, base) {
+    return obj instanceof base;
+  }
+}
+
+// exports
+scope.instanceof = isInstance;
+scope.reservedTagList = reservedTagList;
+
 // bc
 document.register = document.registerElement;
 
@@ -1065,15 +1150,19 @@ scope.useNative = useNative;
 
 })(window.CustomElements);
 
- /*
-Copyright 2013 The Polymer Authors. All rights reserved.
-Use of this source code is governed by a BSD-style
-license that can be found in the LICENSE file.
-*/
+/*
+ * Copyright (c) 2014 The Polymer Project Authors. All rights reserved.
+ * This code may only be used under the BSD style license found at http://polymer.github.io/LICENSE.txt
+ * The complete set of authors may be found at http://polymer.github.io/AUTHORS.txt
+ * The complete set of contributors may be found at http://polymer.github.io/CONTRIBUTORS.txt
+ * Code distributed by Google as part of the polymer project is also
+ * subject to an additional IP rights grant found at http://polymer.github.io/PATENTS.txt
+ */
 
 (function(scope){
 
 var logFlags = window.logFlags || {};
+var IMPORT_LINK_TYPE = window.HTMLImports ? HTMLImports.IMPORT_LINK_TYPE : 'none';
 
 // walk the subtree rooted at node, applying 'find(element, data)' function
 // to each element
@@ -1164,12 +1253,11 @@ function insertedNode(node) {
   }
 }
 
-
-// TODO(sorvell): on platforms without MutationObserver, mutations may not be 
+// TODO(sorvell): on platforms without MutationObserver, mutations may not be
 // reliable and therefore attached/detached are not reliable.
 // To make these callbacks less likely to fail, we defer all inserts and removes
-// to give a chance for elements to be inserted into dom. 
-// This ensures attachedCallback fires for elements that are created and 
+// to give a chance for elements to be inserted into dom.
+// This ensures attachedCallback fires for elements that are created and
 // immediately added to dom.
 var hasPolyfillMutations = (!window.MutationObserver ||
     (window.MutationObserver === window.JsMutationObserver));
@@ -1246,7 +1334,6 @@ function removedNode(node) {
   });
 }
 
-
 function removed(element) {
   if (hasPolyfillMutations) {
     deferMutation(function() {
@@ -1280,10 +1367,16 @@ function _removed(element) {
   }
 }
 
+// SD polyfill intrustion due mainly to the fact that 'document'
+// is not entirely wrapped
+function wrapIfNeeded(node) {
+  return window.ShadowDOMPolyfill ? ShadowDOMPolyfill.wrapIfNeeded(node)
+      : node;
+}
+
 function inDocument(element) {
   var p = element;
-  var doc = window.ShadowDOMPolyfill &&
-      window.ShadowDOMPolyfill.wrapIfNeeded(document) || document;
+  var doc = wrapIfNeeded(document);
   while (p) {
     if (p == doc) {
       return true;
@@ -1367,21 +1460,36 @@ function observe(inRoot) {
   observer.observe(inRoot, {childList: true, subtree: true});
 }
 
-function observeDocument(document) {
-  observe(document);
+function observeDocument(doc) {
+  observe(doc);
 }
 
-function upgradeDocument(document) {
-  logFlags.dom && console.group('upgradeDocument: ', (document.URL || document._URL || '').split('/').pop());
-  addedNode(document);
+function upgradeDocument(doc) {
+  logFlags.dom && console.group('upgradeDocument: ', (doc.baseURI).split('/').pop());
+  addedNode(doc);
   logFlags.dom && console.groupEnd();
 }
 
-// exports
+function upgradeDocumentTree(doc) {
+  doc = wrapIfNeeded(doc);
+  //console.log('upgradeDocumentTree: ', (doc.baseURI).split('/').pop());
+  // upgrade contained imported documents
+  var imports = doc.querySelectorAll('link[rel=' + IMPORT_LINK_TYPE + ']');
+  for (var i=0, l=imports.length, n; (i<l) && (n=imports[i]); i++) {
+    if (n.import && n.import.__parsed) {
+      upgradeDocumentTree(n.import);
+    }
+  }
+  upgradeDocument(doc);
+}
 
+// exports
+scope.IMPORT_LINK_TYPE = IMPORT_LINK_TYPE;
 scope.watchShadow = watchShadow;
+scope.upgradeDocumentTree = upgradeDocumentTree;
 scope.upgradeAll = addedNode;
 scope.upgradeSubtree = addedSubtree;
+scope.insertedNode = insertedNode;
 
 scope.observeDocument = observeDocument;
 scope.upgradeDocument = upgradeDocument;
@@ -1391,16 +1499,19 @@ scope.takeRecords = takeRecords;
 })(window.CustomElements);
 
 /*
- * Copyright 2013 The Polymer Authors. All rights reserved.
- * Use of this source code is governed by a BSD-style
- * license that can be found in the LICENSE file.
+ * Copyright (c) 2014 The Polymer Project Authors. All rights reserved.
+ * This code may only be used under the BSD style license found at http://polymer.github.io/LICENSE.txt
+ * The complete set of authors may be found at http://polymer.github.io/AUTHORS.txt
+ * The complete set of contributors may be found at http://polymer.github.io/CONTRIBUTORS.txt
+ * Code distributed by Google as part of the polymer project is also
+ * subject to an additional IP rights grant found at http://polymer.github.io/PATENTS.txt
  */
 
-(function() {
+(function(scope) {
 
 // import
 
-var IMPORT_LINK_TYPE = window.HTMLImports ? HTMLImports.IMPORT_LINK_TYPE : 'none';
+var IMPORT_LINK_TYPE = scope.IMPORT_LINK_TYPE;
 
 // highlander object for parsing a document tree
 
@@ -1435,8 +1546,8 @@ var parser = {
     }
   },
   parseImport: function(linkElt) {
-    if (linkElt.content) {
-      parser.parse(linkElt.content);
+    if (linkElt.import) {
+      parser.parse(linkElt.import);
     }
   }
 };
@@ -1450,13 +1561,17 @@ var forEach = Array.prototype.forEach.call.bind(Array.prototype.forEach);
 
 // exports
 
-CustomElements.parser = parser;
+scope.parser = parser;
+scope.IMPORT_LINK_TYPE = IMPORT_LINK_TYPE;
 
-})();
+})(window.CustomElements);
 /*
- * Copyright 2013 The Polymer Authors. All rights reserved.
- * Use of this source code is governed by a BSD-style
- * license that can be found in the LICENSE file.
+ * Copyright (c) 2014 The Polymer Project Authors. All rights reserved.
+ * This code may only be used under the BSD style license found at http://polymer.github.io/LICENSE.txt
+ * The complete set of authors may be found at http://polymer.github.io/AUTHORS.txt
+ * The complete set of contributors may be found at http://polymer.github.io/CONTRIBUTORS.txt
+ * Code distributed by Google as part of the polymer project is also
+ * subject to an additional IP rights grant found at http://polymer.github.io/PATENTS.txt
  */
 (function(scope){
 
@@ -1466,14 +1581,19 @@ function bootstrap() {
   CustomElements.parser.parse(document);
   // one more pass before register is 'live'
   CustomElements.upgradeDocument(document);
-  // choose async
-  var async = window.Platform && Platform.endOfMicrotask ? 
-    Platform.endOfMicrotask :
-    setTimeout;
-  async(function() {
-    // set internal 'ready' flag, now document.registerElement will trigger 
-    // synchronous upgrades
-    CustomElements.ready = true;
+  // install upgrade hook if HTMLImports are available
+  if (window.HTMLImports) {
+    HTMLImports.__importsParsingHook = function(elt) {
+      CustomElements.parser.parse(elt.import);
+    }
+  }
+  // set internal 'ready' flag, now document.registerElement will trigger 
+  // synchronous upgrades
+  CustomElements.ready = true;
+  // async to ensure *native* custom elements upgrade prior to this
+  // DOMContentLoaded can fire before elements upgrade (e.g. when there's
+  // an external script)
+  setTimeout(function() {
     // capture blunt profiling data
     CustomElements.readyTime = Date.now();
     if (window.HTMLImports) {
@@ -1488,11 +1608,13 @@ function bootstrap() {
 
 // CustomEvent shim for IE
 if (typeof window.CustomEvent !== 'function') {
-  window.CustomEvent = function(inType) {
-    var e = document.createEvent('HTMLEvents');
-    e.initEvent(inType, true, true);
+  window.CustomEvent = function(inType, params) {
+    params = params || {};
+    var e = document.createEvent('CustomEvent');
+    e.initCustomEvent(inType, Boolean(params.bubbles), Boolean(params.cancelable), params.detail);
     return e;
   };
+  window.CustomEvent.prototype = window.Event.prototype;
 }
 
 // When loading at readyState complete time (or via flag), boot custom elements
@@ -1521,17 +1643,32 @@ if (document.readyState === 'complete' || scope.flags.eager) {
 
   var win = window,
     doc = document,
+    attrProto = {
+      setAttribute: Element.prototype.setAttribute,
+      removeAttribute: Element.prototype.removeAttribute
+    },
+    hasShadow = Element.prototype.createShadowRoot,
     container = doc.createElement('div'),
     noop = function(){},
     trueop = function(){ return true; },
-    regexPseudoSplit = /([\w-]+(?:\([^\)]+\))?)/g,
-    regexPseudoReplace = /(\w*)(?:\(([^\)]*)\))?/,
+    regexCamelToDash = /([a-z])([A-Z])/g,
+    regexPseudoParens = /\(|\)/g,
+    regexPseudoCapture = /:(\w+)\u276A(.+?(?=\u276B))|:(\w+)/g,
     regexDigits = /(\d+)/g,
     keypseudo = {
       action: function (pseudo, event) {
         return pseudo.value.match(regexDigits).indexOf(String(event.keyCode)) > -1 == (pseudo.name == 'keypass') || null;
       }
     },
+    /*
+      - The prefix object generated here is added to the xtag object as xtag.prefix later in the code
+      - Prefix provides a variety of prefix variations for the browser in which your code is running
+      - The 4 variations of prefix are as follows:
+        * prefix.dom: the correct prefix case and form when used on DOM elements/style properties
+        * prefix.lowercase: a lowercase version of the prefix for use in various user-code situations
+        * prefix.css: the lowercase, dashed version of the prefix
+        * prefix.js: addresses prefixed APIs present in global and non-Element contexts
+    */
     prefix = (function () {
       var styles = win.getComputedStyle(doc.documentElement, ''),
           pre = (Array.prototype.slice
@@ -1553,6 +1690,11 @@ if (document.readyState === 'complete' || scope.flags.eager) {
 
 // Utilities
 
+  /*
+    This is an enhanced typeof check for all types of objects. Where typeof would normaly return
+    'object' for many common DOM objects (like NodeLists and HTMLCollections).
+    - For example: typeOf(document.children) will correctly return 'htmlcollection'
+  */
   var typeCache = {},
       typeString = typeCache.toString,
       typeRegexp = /\s([a-zA-Z]+)/;
@@ -1576,6 +1718,10 @@ if (document.readyState === 'complete' || scope.flags.eager) {
       return array;
     };
 
+  /*
+    The toArray() method allows for conversion of any object to a true array. For types that
+    cannot be converted to an array, the method returns a 1 item array containing the passed-in object.
+  */
   var unsliceable = ['undefined', 'null', 'number', 'boolean', 'string', 'function'];
   function toArray(obj){
     return unsliceable.indexOf(typeOf(obj)) == -1 ?
@@ -1607,6 +1753,10 @@ if (document.readyState === 'complete' || scope.flags.eager) {
     });
   }
 
+// Pseudos
+
+  function parsePseudo(fn){fn();}
+
 // Mixins
 
   function mergeOne(source, key, current){
@@ -1618,7 +1768,9 @@ if (document.readyState === 'complete' || scope.flags.eager) {
 
   function wrapMixin(tag, key, pseudo, value, original){
     var fn = original[key];
-    if (!(key in original)) original[key] = value;
+    if (!(key in original)) {
+      original[key + (pseudo.match(':mixins') ? '' : ':mixins')] = value;
+    }
     else if (typeof original[key] == 'function') {
       if (!fn.__mixins__) fn.__mixins__ = [];
       fn.__mixins__.push(xtag.applyPseudos(pseudo, value, tag.pseudos));
@@ -1691,20 +1843,6 @@ if (document.readyState === 'complete' || scope.flags.eager) {
     return true;
   }
 
-  function createFlowEvent(type) {
-    var flow = type == 'over';
-    return {
-      attach: 'OverflowEvent' in win ? 'overflowchanged' : [],
-      condition: function (event, custom) {
-        event.flow = type;
-        return event.type == (type + 'flow') ||
-        ((event.orient === 0 && event.horizontalOverflow == flow) ||
-        (event.orient == 1 && event.verticalOverflow == flow) ||
-        (event.orient == 2 && event.horizontalOverflow == flow && event.verticalOverflow == flow));
-      }
-    };
-  }
-
   function writeProperty(key, event, base, desc){
     if (desc) event[key] = base[key];
     else Object.defineProperty(event, key, {
@@ -1726,27 +1864,15 @@ if (document.readyState === 'complete' || scope.flags.eager) {
 
 // Accessors
 
-  function getArgs(attr, value){
-    return {
-      value: attr.boolean ? '' : value,
-      method: attr.boolean && !value ? 'removeAttribute' : 'setAttribute'
-    };
-  }
-
-  function modAttr(element, attr, name, value){
-    var args = getArgs(attr, value);
-    element[args.method](name, args.value);
+  function modAttr(element, attr, name, value, method){
+    attrProto[method].call(element, name, attr && attr.boolean ? '' : value);
   }
 
   function syncAttr(element, attr, name, value, method){
-    var nodes = attr.property ? [element.xtag[attr.property]] : attr.selector ? xtag.query(element, attr.selector) : [],
-        index = nodes.length;
-    while (index--) nodes[index][method](name, value);
-  }
-
-  function updateView(element, name, value){
-    if (element.__view__){
-      element.__view__.updateBindingValue(element, name, value);
+    if (attr && (attr.property || attr.selector)) {
+      var nodes = attr.property ? [element.xtag[attr.property]] : attr.selector ? xtag.query(element, attr.selector) : [],
+          index = nodes.length;
+      while (index--) nodes[index][method](name, value);
     }
   }
 
@@ -1759,18 +1885,24 @@ if (document.readyState === 'complete' || scope.flags.eager) {
     else if (type == 'set') {
       key[0] = prop;
       var setter = tag.prototype[prop].set = xtag.applyPseudos(key.join(':'), attr ? function(value){
-        this.xtag._skipSet = true;
-        if (!this.xtag._skipAttr) modAttr(this, attr, name, value);
-        if (this.xtag._skipAttr && attr.skip) delete this.xtag._skipAttr;
-        accessor[z].call(this, attr.boolean ? !!value : value);
-        updateView(this, name, value);
-        delete this.xtag._skipSet;
+        var old, method = 'setAttribute';
+        if (attr.boolean){
+          value = !!value;
+          old = this.hasAttribute(name);
+          if (!value) method = 'removeAttribute';
+        }
+        else {
+          value = attr.validate ? attr.validate.call(this, value) : value;
+          old = this.getAttribute(name);
+        }
+        modAttr(this, attr, name, value, method);
+        accessor[z].call(this, value, old);
+        syncAttr(this, attr, name, value, method);
       } : accessor[z] ? function(value){
         accessor[z].call(this, value);
-        updateView(this, name, value);
       } : null, tag.pseudos, accessor[z]);
 
-      if (attr) attr.setter = setter;
+      if (attr) attr.setter = accessor[z];
     }
     else tag.prototype[prop][z] = accessor[z];
   }
@@ -1779,9 +1911,10 @@ if (document.readyState === 'complete' || scope.flags.eager) {
     tag.prototype[prop] = {};
     var accessor = tag.accessors[prop],
         attr = accessor.attribute,
-        name = attr && attr.name ? attr.name.toLowerCase() : prop;
+        name;
 
     if (attr) {
+      name = attr.name = (attr ? (attr.name || prop.replace(regexCamelToDash, '$1-$2')) : prop).toLowerCase();
       attr.key = prop;
       tag.attributes[name] = attr;
     }
@@ -1796,19 +1929,17 @@ if (document.readyState === 'complete' || scope.flags.eager) {
         };
       }
       if (!tag.prototype[prop].set) tag.prototype[prop].set = function(value){
-        modAttr(this, attr, name, value);
-        updateView(this, name, value);
+        value = attr.boolean ? !!value : attr.validate ? attr.validate.call(this, value) : value;
+        var method = attr.boolean ? (value ? 'setAttribute' : 'removeAttribute') : 'setAttribute';
+        modAttr(this, attr, name, value, method);
+        syncAttr(this, attr, name, value, method);
       };
     }
   }
 
-  var readyTags = {};
-  function fireReady(name){
-    readyTags[name] = (readyTags[name] || []).filter(function(obj){
-      return (obj.tags = obj.tags.filter(function(z){
-        return z != name && !xtag.tags[z];
-      })).length || obj.fn();
-    });
+  var unwrapComment = /\/\*!?(?:\@preserve)?[ \t]*(?:\r\n|\n)([\s\S]*?)(?:\r\n|\n)\s*\*\//;
+  function parseMultiline(fn){
+    return unwrapComment.exec(fn.toString())[1];
   }
 
 /*** X-Tag Object Definition ***/
@@ -1838,27 +1969,27 @@ if (document.readyState === 'complete' || scope.flags.eager) {
       } else {
         return;
       }
-
+      xtag.tags[_name] = options || {};
       // save prototype for actual object creation below
       var basePrototype = options.prototype;
       delete options.prototype;
-
-      var tag = xtag.tags[_name] = applyMixins(xtag.merge({}, xtag.defaultOptions, options));
+      var tag = xtag.tags[_name].compiled = applyMixins(xtag.merge({}, xtag.defaultOptions, options));
 
       for (var z in tag.events) tag.events[z] = xtag.parseEvent(z, tag.events[z]);
       for (z in tag.lifecycle) tag.lifecycle[z.split(':')[0]] = xtag.applyPseudos(z, tag.lifecycle[z], tag.pseudos, tag.lifecycle[z]);
       for (z in tag.methods) tag.prototype[z.split(':')[0]] = { value: xtag.applyPseudos(z, tag.methods[z], tag.pseudos, tag.methods[z]), enumerable: true };
       for (z in tag.accessors) parseAccessor(tag, z);
 
+      tag.shadow = tag.shadow ? xtag.createFragment(tag.shadow) : null;
+      tag.content = tag.content ? xtag.createFragment(tag.content) : null;
       var ready = tag.lifecycle.created || tag.lifecycle.ready;
       tag.prototype.createdCallback = {
         enumerable: true,
         value: function(){
           var element = this;
+          if (tag.shadow && hasShadow) this.createShadowRoot().appendChild(tag.shadow.cloneNode(true));
+          if (tag.content) this.appendChild(tag.content.cloneNode(true));
           xtag.addEvents(this, tag.events);
-          tag.mixins.forEach(function(mixin){
-            if (xtag.mixins[mixin].events) xtag.addEvents(element, xtag.mixins[mixin].events);
-          });
           var output = ready ? ready.apply(this, arguments) : null;
           for (var name in tag.attributes) {
             var attr = tag.attributes[name],
@@ -1873,7 +2004,7 @@ if (document.readyState === 'complete' || scope.flags.eager) {
           return output;
         }
       };
-			
+
       var inserted = tag.lifecycle.inserted,
           removed = tag.lifecycle.removed;
       if (inserted || removed) {
@@ -1893,40 +2024,37 @@ if (document.readyState === 'complete' || scope.flags.eager) {
       }
       if (tag.lifecycle.attributeChanged) tag.prototype.attributeChangedCallback = { value: tag.lifecycle.attributeChanged, enumerable: true };
 
-      var setAttribute = tag.prototype.setAttribute || HTMLElement.prototype.setAttribute;
       tag.prototype.setAttribute = {
         writable: true,
-        enumberable: true,
+        enumerable: true,
         value: function (name, value){
-          var attr = tag.attributes[name.toLowerCase()];
-          if (!this.xtag._skipAttr) setAttribute.call(this, name, attr && attr.boolean ? '' : value);
+          var old;
+          var _name = name.toLowerCase();
+          var attr = tag.attributes[_name];
           if (attr) {
-            if (attr.setter && !this.xtag._skipSet) {
-              this.xtag._skipAttr = true;
-              attr.setter.call(this, attr.boolean ? true : value);
-            }
-            value = attr.skip ? attr.boolean ? this.hasAttribute(name) : this.getAttribute(name) : value;
-            syncAttr(this, attr, name, attr.boolean ? '' : value, 'setAttribute');
+            old = this.getAttribute(_name);
+            value = attr.boolean ? '' : attr.validate ? attr.validate.call(this, value) : value;
           }
-          delete this.xtag._skipAttr;
+          modAttr(this, attr, _name, value, 'setAttribute');
+          if (attr) {
+            if (attr.setter) attr.setter.call(this, attr.boolean ? true : value, old);
+            syncAttr(this, attr, _name, value, 'setAttribute');
+          }
         }
       };
 
-      var removeAttribute = tag.prototype.removeAttribute || HTMLElement.prototype.removeAttribute;
       tag.prototype.removeAttribute = {
         writable: true,
-        enumberable: true,
+        enumerable: true,
         value: function (name){
-          var attr = tag.attributes[name.toLowerCase()];
-          if (!this.xtag._skipAttr) removeAttribute.call(this, name);
+          var _name = name.toLowerCase();
+          var attr = tag.attributes[_name];
+          var old = this.hasAttribute(_name);
+          modAttr(this, attr, _name, '', 'removeAttribute');
           if (attr) {
-            if (attr.setter && !this.xtag._skipSet) {
-              this.xtag._skipAttr = true;
-              attr.setter.call(this, attr.boolean ? false : undefined);
-            }
-            syncAttr(this, attr, name, undefined, 'removeAttribute');
+            if (attr.setter) attr.setter.call(this, attr.boolean ? false : undefined, old);
+            syncAttr(this, attr, _name, '', 'removeAttribute');
           }
-          delete this.xtag._skipAttr;
         }
       };
 
@@ -1943,16 +2071,7 @@ if (document.readyState === 'complete' || scope.flags.eager) {
         definition['extends'] = options['extends'];
       }
       var reg = doc.registerElement(_name, definition);
-      fireReady(_name);
       return reg;
-    },
-
-    ready: function(names, fn){
-      var obj = { tags: toArray(names), fn: fn };
-      if (obj.tags.reduce(function(last, name){
-        if (xtag.tags[name]) return last;
-        (readyTags[name] = readyTags[name] || []).push(obj);
-      }, true)) fn();
     },
 
     /* Exposed Variables */
@@ -1961,8 +2080,6 @@ if (document.readyState === 'complete' || scope.flags.eager) {
     prefix: prefix,
     captureEvents: ['focus', 'blur', 'scroll', 'underflow', 'overflow', 'overflowchanged', 'DOMMouseScroll'],
     customEvents: {
-      overflow: createFlowEvent('over'),
-      underflow: createFlowEvent('under'),
       animationstart: {
         attach: [prefix.dom + 'AnimationStart']
       },
@@ -2039,6 +2156,10 @@ if (document.readyState === 'complete' || scope.flags.eager) {
     },
     pseudos: {
       __mixin__: {},
+      /*
+
+
+      */
       mixins: {
         onCompiled: function(fn, pseudo){
           var mixins = pseudo.source.__mixins__;
@@ -2051,7 +2172,7 @@ if (document.readyState === 'complete' || scope.flags.eager) {
               });
               return fn.apply(self, args);
             };
-            case 'after': case null: return function(){
+            case null: case '': case 'after': return function(){
               var self = this,
                   args = arguments;
                   returns = fn.apply(self, args);
@@ -2098,7 +2219,10 @@ if (document.readyState === 'complete' || scope.flags.eager) {
         return output;
       };
     },
-
+    /*
+      Recursively merges one object with another. The first argument is the destination object,
+      all other objects passed in as arguments are merged from right to left, conflicts are overwritten
+    */
     merge: function(source, k, v){
       if (typeOf(k) == 'string') return mergeOne(source, k, v);
       for (var i = 1, l = arguments.length; i < l; i++){
@@ -2108,6 +2232,10 @@ if (document.readyState === 'complete' || scope.flags.eager) {
       return source;
     },
 
+    /*
+      ----- This should be simplified! -----
+      Generates a random ID string
+    */
     uid: function(){
       return Math.random().toString(36).substr(2,10);
     },
@@ -2119,12 +2247,10 @@ if (document.readyState === 'complete' || scope.flags.eager) {
     skipTransition: function(element, fn, bind){
       var prop = prefix.js + 'TransitionProperty';
       element.style[prop] = element.style.transitionProperty = 'none';
-      var callback = fn ? fn.call(bind) : null;
-      return xtag.requestFrame(function(){
-        xtag.requestFrame(function(){
-          element.style[prop] = element.style.transitionProperty = '';
-          if (callback) xtag.requestFrame(callback);
-        });
+      var callback = fn ? fn.call(bind || element) : null;
+      return xtag.skipFrame(function(){
+        element.style[prop] = element.style.transitionProperty = '';
+        if (callback) callback.call(bind || element);
       });
     },
 
@@ -2141,6 +2267,11 @@ if (document.readyState === 'complete' || scope.flags.eager) {
                    win.clearTimeout;
       return function(id){ return cancel(id); };
     })(),
+
+    skipFrame: function(fn){
+      var id = xtag.requestFrame(function(){ id = xtag.requestFrame(fn); });
+      return id;
+    },
 
     matchSelector: function (element, selector) {
       return matchSelector.call(element, selector);
@@ -2180,6 +2311,9 @@ if (document.readyState === 'complete' || scope.flags.eager) {
       return xtag[xtag.hasClass(element, klass) ? 'removeClass' : 'addClass'].call(null, element, klass);
     },
 
+    /*
+      Runs a query on only the children of an element
+    */
     queryChildren: function (element, selector) {
       var id = element.id,
         guid = element.id = id || 'x_' + xtag.uid(),
@@ -2197,12 +2331,15 @@ if (document.readyState === 'complete' || scope.flags.eager) {
       }
       return toArray(result);
     },
-
+    /*
+      Creates a document fragment with the content passed in - content can be
+      a string of HTML, an element, or an array/collection of elements
+    */
     createFragment: function(content) {
       var frag = doc.createDocumentFragment();
       if (content) {
         var div = frag.appendChild(doc.createElement('div')),
-          nodes = toArray(content.nodeName ? arguments : !(div.innerHTML = content) || div.children),
+          nodes = toArray(content.nodeName ? arguments : !(div.innerHTML = typeof content == 'function' ? parseMultiline(content) : content) || div.children),
           length = nodes.length,
           index = 0;
         while (index < length) frag.insertBefore(nodes[index++], div);
@@ -2211,6 +2348,10 @@ if (document.readyState === 'complete' || scope.flags.eager) {
       return frag;
     },
 
+    /*
+      Removes an element from the DOM for more performant node manipulation. The element
+      is placed back into the DOM at the place it was taken from.
+    */
     manipulate: function(element, fn){
       var next = element.nextSibling,
         parent = element.parentNode,
@@ -2226,40 +2367,40 @@ if (document.readyState === 'complete' || scope.flags.eager) {
       var listener = fn,
           pseudos = {};
       if (key.match(':')) {
-        var split = key.match(regexPseudoSplit),
-            i = split.length;
-        while (--i) {
-          split[i].replace(regexPseudoReplace, function (match, name, value) {
-            if (!xtag.pseudos[name]) throw "pseudo not found: " + name + " " + split;
-            value = (value === '' || typeof value == 'undefined') ? null : value;
-            var pseudo = pseudos[i] = Object.create(xtag.pseudos[name]);
-            pseudo.key = key;
-            pseudo.name = name;
-            pseudo.value = value;
-            pseudo['arguments'] = (value || '').split(',');
-            pseudo.action = pseudo.action || trueop;
-            pseudo.source = source;
-            var last = listener;
-            listener = function(){
-              var args = toArray(arguments),
-                  obj = {
-                    key: key,
-                    name: name,
-                    value: value,
-                    source: source,
-                    'arguments': pseudo['arguments'],
-                    listener: last
-                  };
-              var output = pseudo.action.apply(this, [obj].concat(args));
-              if (output === null || output === false) return output;
-              return obj.listener.apply(this, args);
-            };
-            if (target && pseudo.onAdd) {
-              if (target.nodeName) pseudo.onAdd.call(target, pseudo);
-              else target.push(pseudo);
-            }
-          });
-        }
+        var matches = [],
+            valueFlag = 0;
+        key.replace(regexPseudoParens, function(match){
+          if (match == '(') return ++valueFlag == 1 ? '\u276A' : '(';
+          return !--valueFlag ? '\u276B' : ')';
+        }).replace(regexPseudoCapture, function(z, name, value, solo){
+          matches.push([name || solo, value]);
+        });
+        var i = matches.length;
+        while (i--) parsePseudo(function(){
+          var name = matches[i][0],
+              value = matches[i][1];
+          if (!xtag.pseudos[name]) throw "pseudo not found: " + name + " " + value;
+          value = (value === '' || typeof value == 'undefined') ? null : value;
+          var pseudo = pseudos[i] = Object.create(xtag.pseudos[name]);
+          pseudo.key = key;
+          pseudo.name = name;
+          pseudo.value = value;
+          pseudo['arguments'] = (value || '').split(',');
+          pseudo.action = pseudo.action || trueop;
+          pseudo.source = source;
+          var original = pseudo.listener = listener;
+          listener = function(){
+            var output = pseudo.action.apply(this, [pseudo].concat(toArray(arguments)));
+            if (output === null || output === false) return output;
+            output = pseudo.listener.apply(this, arguments);
+            pseudo.listener = original;
+            return output;
+          };
+          if (target && pseudo.onAdd) {
+            if (target.nodeName) pseudo.onAdd.call(target, pseudo);
+            else target.push(pseudo);
+          }
+        });
       }
       for (var z in pseudos) {
         if (pseudos[z].onCompiled) listener = pseudos[z].onCompiled(listener, pseudos[z]) || listener;
@@ -2313,7 +2454,9 @@ if (document.readyState === 'complete' || scope.flags.eager) {
         var args = toArray(arguments),
             output = event.condition.apply(this, args.concat([event]));
         if (!output) return output;
-        if (e.type != key) {
+        // The second condition in this IF is to address the following Blink regression: https://code.google.com/p/chromium/issues/detail?id=367537
+        // Remove this when affected browser builds with this regression fall below 5% marketshare
+        if (e.type != key && (e.baseEvent && e.type != e.baseEvent.type)) {
           xtag.fireEvent(e.target, key, {
             baseEvent: e,
             detail: output !== true && (output.__stack__ = stack) ? output : { __stack__: stack }
@@ -2374,22 +2517,22 @@ if (document.readyState === 'complete' || scope.flags.eager) {
       for (var z in obj) xtag.removeEvent(element, obj[z]);
     },
 
-    fireEvent: function(element, type, options, warn){
+    fireEvent: function(element, type, options){
       var event = doc.createEvent('CustomEvent');
       options = options || {};
-      if (warn) console.warn('fireEvent has been modified');
       event.initCustomEvent(type,
         options.bubbles !== false,
         options.cancelable !== false,
         options.detail
       );
       if (options.baseEvent) inheritEvent(event, options.baseEvent);
-      try { element.dispatchEvent(event); }
-      catch (e) {
-        console.warn('This error may have been caused by a change in the fireEvent method', e);
-      }
+      element.dispatchEvent(event);
     },
 
+    /*
+      Listens for insertion or removal of nodes from a given element using
+      Mutation Observers, or Mutation Events as a fallback
+    */
     addObserver: function(element, type, fn){
       if (!element._records) {
         element._records = { inserted: [], removed: [] };
@@ -2570,21 +2713,17 @@ for (z in UIEventProto){
 })();
 
 (function(){
-
   var matchNum = /[1-9]/,
       replaceSpaces = / /g,
       captureTimes = /(\d|\d+?[.]?\d+?)(s|ms)(?!\w)/gi,
       transPre = 'transition' in getComputedStyle(document.documentElement) ? 't' : xtag.prefix.js + 'T',
       transDur = transPre + 'ransitionDuration',
       transProp = transPre + 'ransitionProperty',
-      skipFrame = function(fn){
-        xtag.requestFrame(function(){ xtag.requestFrame(fn) });
-      },
       ready = document.readyState == 'complete' ? 
-        skipFrame(function(){ ready = false }) :
+        xtag.skipFrame(function(){ ready = false }) :
         xtag.addEvent(document, 'readystatechange', function(){
           if (document.readyState == 'complete') {
-            skipFrame(function(){ ready = false });
+            xtag.skipFrame(function(){ ready = false });
             xtag.removeEvent(document, 'readystatechange', ready);
           }
         });
@@ -2594,9 +2733,23 @@ for (z in UIEventProto){
   }
   
   function startTransition(node, name, transitions){
-    var style = getComputedStyle(node),
-        after = transitions[name].after;
     node.setAttribute('transition', name);
+    var i = max = 0,
+        transNames = [],
+        style = getComputedStyle(node),
+        transitions = getTransitions(node),
+        after = transitions[name].after,
+        transProps = style[transProp].replace(replaceSpaces, '').split(',');
+        
+    style[transDur].replace(captureTimes, function(match, time, unit){
+      var time = parseFloat(time) * (unit === 's' ? 1000 : 1);
+      if (time >= max) {
+        transNames.push(transProps[i]);
+        max = time;
+      }
+      i++;
+    });
+    transitions[name].transNames = transNames;
     if (after && !style[transDur].match(matchNum)) after.call(node);
   }
   
@@ -2605,55 +2758,49 @@ for (z in UIEventProto){
       var node = e.target,
           name = node.getAttribute('transition');
       if (name) {
-        var i = max = 0,
-            prop = null,
-            style = getComputedStyle(node),
-            transitions = getTransitions(node),
-            props = style[transProp].replace(replaceSpaces, '').split(',');
-        style[transDur].replace(captureTimes, function(match, time, unit){
-          var time = parseFloat(time) * (unit === 's' ? 1000 : 1);
-          if (time > max) prop = i, max = time;
-          i++;
-        });
-        prop = props[prop];
-        if (!prop) throw new SyntaxError('No matching transition property found');
-        else if (e.propertyName == prop && transitions[name].after) transitions[name].after.call(node);
+        var transition = getTransitions(node)[name];
+        if (transition.transNames.indexOf(e.propertyName) > -1) {
+          transition.transNames = [];
+          node.removeAttribute('transitioning');
+          if (transition.after) transition.after.call(node);
+        }
       }
     }
   });
   
   xtag.transition = function(node, name, obj){
-    var transitions = getTransitions(node),
-        options = transitions[name] = obj || {};
-    if (options.immediate) options.immediate.call(node);
-    if (options.before) {
-      options.before.call(node);
-      if (ready) xtag.skipTransition(node, function(){
-        startTransition(node, name, transitions);
-      });
-      else skipFrame(function(){
+    if (node.getAttribute('transition') != name){
+      var transitions = getTransitions(node),
+          options = transitions[name] = obj || {};
+      node.setAttribute('transitioning', name);
+      if (options.immediate) options.immediate.call(node);
+      if (options.before) {
+        options.before.call(node);
+        if (ready) xtag.skipTransition(node, function(){
+          startTransition(node, name, transitions);
+        });
+        else xtag.skipFrame(function(){
+          startTransition(node, name, transitions);
+        });
+      }
+      else xtag.skipFrame(function(){
         startTransition(node, name, transitions);
       });
     }
-    else startTransition(node, name, transitions);
   };
   
   xtag.pseudos.transition = {
     onCompiled: function(fn, pseudo){
-      var options = {},
-          when = pseudo.arguments[0] || 'immediate',
+      var when = pseudo.arguments[0] || 'immediate',
           name = pseudo.arguments[1] || pseudo.key.split(':')[0];
-      return function(){
-        var target = this, args = arguments;
-        if (this.hasAttribute('transition')) {
-          options[when] = function(){
-            return fn.apply(target, args);
-          }
-          xtag.transition(this, name, options);
+      return function(){   
+        var options = {},
+            args = arguments;
+        options[when] = function(){
+          return fn.apply(this, args);
         }
-        else return fn.apply(this, args);
+        xtag.transition(this, name, options);
       }
     }
   }
-
 })();
