@@ -1,13 +1,14 @@
 (function(){
-   
-  var frag = xtag.createFragment('<div class="x-spinner-center"><img class="x-spin-element" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" /></div>');
-  
+
   xtag.register('x-spinner', {
+    content: '<div class="x-spinner-center"><svg viewBox="0 0 170 170">' +
+                '<path fill="none" stroke="inherit" stroke-width="25" stroke-linecap="round" stroke-miterlimit="10" d="M84.5,156.5 c-39.8,0-72-32.2-72-72"/>' +
+                '<path fill="none" stroke="inherit" stroke-width="25" stroke-linecap="round" stroke-miterlimit="10" d="M84.5,12.5 c39.8,0,72,32.2,72,72"/>' +
+             '</svg></div>',
     lifecycle: {
       created: function() {
-        this.appendChild(frag.cloneNode(true));
         this.xtag.center = this.lastElementChild;
-        this.xtag.img = this.lastElementChild.firstElementChild;
+        this.xtag.svg = this.lastElementChild.firstElementChild;
       }
     },
     accessors: {
@@ -18,7 +19,7 @@
         attribute: { boolean: true }
       },
       src: {
-        attribute: { property: 'img' }
+        attribute: { property: 'svg' }
       },
       label: {
         attribute: { property: 'center' }
@@ -32,10 +33,10 @@
       duration: {
         attribute: {},
         set: function(value){
-          this.xtag.img.style.animationDuration = this.xtag.img.style[xtag.prefix.lowercase + 'AnimationDuration'] = value;
+          this.xtag.svg.style.animationDuration = this.xtag.svg.style[xtag.prefix.lowercase + 'AnimationDuration'] = value;
         }
       }
-    }, 
+    },
     methods: {
       spin: function(){
         this.spinning = true;
@@ -45,12 +46,12 @@
         if (this.fade) xtag.transition(this, 'fade-out', {
           after: function(){ this.spinning = false; }
         });
-        else this.spinning = false; 
+        else this.spinning = false;
       },
       toggle: function(){
         this.spinning ? this.stop() : this.spin();
       }
-    } 
+    }
   });
 
 })();
