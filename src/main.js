@@ -2,7 +2,8 @@
 
   var path = '<path fill="none" stroke="inherit" stroke-width="25" stroke-linecap="round" stroke-miterlimit="10" d="M84.5,';
 
-  function stop(spinner){
+  function stop(spinner, fn){
+    if (fn) fn.call(spinner);
     if (spinner.fade) xtag.transition(spinner, 'fade-out', {
       after: function(){ spinner.spinning = false; }
     });
@@ -47,25 +48,25 @@
       }
     },
     methods: {
-      spin: function(){
+      spin: function(fn){
         this.spinning = true;
         clearTimeout(this.xtag.stop);
         this.xtag.start = new Date().getTime();
-        if (this.fade) xtag.transition(this, 'fade-in');
+        if (this.fade) xtag.transition(this, 'fade-in', fn ? { after: fn.bind(this) } : null);
         if (this.duration) this.xtag.stop = setTimeout(this.stop.bind(this), this.duration);
       },
-      stop: function(){
+      stop: function(fn){
         if (this.minDuration) {
           clearTimeout(this.xtag.stop);
           this.xtag.stop = setTimeout(
-            stop.bind(null, this),
+            stop.bind(null, this, fn),
             this.minDuration - (new Date().getTime() - this.xtag.start)
           );
         }
-        else stop(this);
+        else stop(this, fn);
       },
-      toggle: function(){
-        this.spinning ? this.stop() : this.spin();
+      toggle: function(fn){
+        this.spinning ? this.stop(fn) : this.spin(fn);
       }
     }
   });
