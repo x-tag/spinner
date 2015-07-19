@@ -1,9 +1,18 @@
 (function(){
 
+  var path = '<path fill="none" stroke="inherit" stroke-width="25" stroke-linecap="round" stroke-miterlimit="10" d="M84.5,';
+
+  function stop(spinner){
+    if (spinner.fade) xtag.transition(spinner, 'fade-out', {
+      after: function(){ spinner.spinning = false; }
+    });
+    else spinner.spinning = false;
+  }
+
   xtag.register('x-spinner', {
     content: '<div class="x-spinner-center"><svg viewBox="0 0 170 170">' +
-                '<path fill="none" stroke="inherit" stroke-width="25" stroke-linecap="round" stroke-miterlimit="10" d="M84.5,156.5 c-39.8,0-72-32.2-72-72"/>' +
-                '<path fill="none" stroke="inherit" stroke-width="25" stroke-linecap="round" stroke-miterlimit="10" d="M84.5,12.5 c39.8,0,72,32.2,72,72"/>' +
+                path + '156.5 c-39.8,0-72-32.2-72-72"/>' +
+                path + '12.5 c39.8,0,72,32.2,72,72"/>' +
              '</svg></div>',
     lifecycle: {
       created: function() {
@@ -31,22 +40,29 @@
         }
       },
       duration: {
-        attribute: {},
-        set: function(value){
-          this.xtag.svg.style.animationDuration = this.xtag.svg.style[xtag.prefix.lowercase + 'AnimationDuration'] = value;
-        }
+        attribute: {}
+      },
+      minDuration: {
+        attribute: {}
       }
     },
     methods: {
       spin: function(){
         this.spinning = true;
+        clearTimeout(this.xtag.stop);
+        this.xtag.start = new Date().getTime();
         if (this.fade) xtag.transition(this, 'fade-in');
+        if (this.duration) this.xtag.stop = setTimeout(this.stop.bind(this), this.duration);
       },
       stop: function(){
-        if (this.fade) xtag.transition(this, 'fade-out', {
-          after: function(){ this.spinning = false; }
-        });
-        else this.spinning = false;
+        if (this.minDuration) {
+          clearTimeout(this.xtag.stop);
+          this.xtag.stop = setTimeout(
+            stop.bind(null, this),
+            this.minDuration - (new Date().getTime() - this.xtag.start)
+          );
+        }
+        else stop(this);
       },
       toggle: function(){
         this.spinning ? this.stop() : this.spin();
