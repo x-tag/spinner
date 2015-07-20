@@ -1587,7 +1587,7 @@ function bootstrap() {
       CustomElements.parser.parse(elt.import);
     }
   }
-  // set internal 'ready' flag, now document.registerElement will trigger 
+  // set internal 'ready' flag, now document.registerElement will trigger
   // synchronous upgrades
   CustomElements.ready = true;
   // async to ensure *native* custom elements upgrade prior to this
@@ -1627,7 +1627,7 @@ if (document.readyState === 'complete' || scope.flags.eager) {
 } else if (document.readyState === 'interactive' && !window.attachEvent &&
     (!window.HTMLImports || window.HTMLImports.ready)) {
   bootstrap();
-// When loading at other readyStates, wait for the appropriate DOM event to 
+// When loading at other readyStates, wait for the appropriate DOM event to
 // bootstrap.
 } else {
   var loadEvent = window.HTMLImports && !HTMLImports.ready ?
@@ -2719,7 +2719,7 @@ for (z in UIEventProto){
       transPre = 'transition' in getComputedStyle(document.documentElement) ? 't' : xtag.prefix.js + 'T',
       transDur = transPre + 'ransitionDuration',
       transProp = transPre + 'ransitionProperty',
-      ready = document.readyState == 'complete' ? 
+      ready = document.readyState == 'complete' ?
         xtag.skipFrame(function(){ ready = false }) :
         xtag.addEvent(document, 'readystatechange', function(){
           if (document.readyState == 'complete') {
@@ -2727,53 +2727,47 @@ for (z in UIEventProto){
             xtag.removeEvent(document, 'readystatechange', ready);
           }
         });
-  
+
   function getTransitions(node){
     return node.__transitions__ = node.__transitions__ || {};
   }
-  
+
   function startTransition(node, name, transitions){
+    var current = node.getAttribute('transition');
+    if (transitions[current]) clearTimeout(transitions[current].timer);
+
     node.setAttribute('transition', name);
+
     var i = max = 0,
-        transNames = [],
         style = getComputedStyle(node),
-        transitions = getTransitions(node),
-        after = transitions[name].after,
+        transition = transitions[name],
+        after = transition.after,
         transProps = style[transProp].replace(replaceSpaces, '').split(',');
-        
+
     style[transDur].replace(captureTimes, function(match, time, unit){
       var time = parseFloat(time) * (unit === 's' ? 1000 : 1);
-      if (time >= max) {
-        transNames.push(transProps[i]);
-        max = time;
-      }
+      if (time >= max) max = time;
       i++;
     });
-    transitions[name].transNames = transNames;
+
+    transition.timer = setTimeout(function(){
+      node.removeAttribute('transitioning');
+      if (transition.after) transition.after.call(node);
+    }, max);
+
     if (after && !style[transDur].match(matchNum)) after.call(node);
   }
-  
-  xtag.addEvents(document, {
-    transitionend: function(e){
-      var node = e.target,
-          name = node.getAttribute('transition');
-      if (name) {
-        var transition = getTransitions(node)[name];
-        if (transition.transNames.indexOf(e.propertyName) > -1) {
-          transition.transNames = [];
-          node.removeAttribute('transitioning');
-          if (transition.after) transition.after.call(node);
-        }
-      }
-    }
-  });
-  
+
   xtag.transition = function(node, name, obj){
     if (node.getAttribute('transition') != name){
+
       var transitions = getTransitions(node),
           options = transitions[name] = obj || {};
+
       node.setAttribute('transitioning', name);
+
       if (options.immediate) options.immediate.call(node);
+
       if (options.before) {
         options.before.call(node);
         if (ready) xtag.skipTransition(node, function(){
@@ -2788,12 +2782,12 @@ for (z in UIEventProto){
       });
     }
   };
-  
+
   xtag.pseudos.transition = {
     onCompiled: function(fn, pseudo){
       var when = pseudo.arguments[0] || 'immediate',
           name = pseudo.arguments[1] || pseudo.key.split(':')[0];
-      return function(){   
+      return function(){
         var options = {},
             args = arguments;
         options[when] = function(){

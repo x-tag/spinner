@@ -4,10 +4,9 @@
 
   function stop(spinner, fn){
     if (fn) fn.call(spinner);
-    if (spinner.fade) xtag.transition(spinner, 'fade-out', {
+    xtag.transition(spinner, 'fade-out', {
       after: function(){ spinner.spinning = false; }
     });
-    else spinner.spinning = false;
   }
 
   xtag.register('x-spinner', {
@@ -52,7 +51,7 @@
         this.spinning = true;
         clearTimeout(this.xtag.stop);
         this.xtag.start = new Date().getTime();
-        if (this.fade) xtag.transition(this, 'fade-in', fn ? { after: fn.bind(this) } : null);
+        xtag.transition(this, 'fade-in', fn ? { after: fn.bind(this) } : null);
         if (this.duration) this.xtag.stop = setTimeout(this.stop.bind(this), this.duration);
       },
       stop: function(fn){
