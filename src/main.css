@@ -42,7 +42,7 @@ x-spinner::before {
   width: 2em;
   height: 2em;
   color: inherit;
-  border: 0.25em solid rgba(0, 0, 0, 0.2);
+  border: 0.25em solid transparent;
   border-top-color: inherit;
   border-bottom-color: inherit;
   border-radius: 50%;
