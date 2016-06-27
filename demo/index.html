@@ -7,8 +7,8 @@
     <link rel="stylesheet" type="text/css" href="x-tag-components.css"/>
 	<link rel="stylesheet" type="text/css" href="../src/main.css"/>
 
-    <script type="text/javascript" src="x-tag-components.js"></script> 
-    <script type="text/javascript" src="../src/main.js"></script>      
+    <script type="text/javascript" src="x-tag-components.js"></script>
+    <script type="text/javascript" src="../src/main.js"></script>
 	<style>
 
 	</style>
@@ -18,7 +18,7 @@
 
   <button id="toggle">Toggle Spinner</button>
 
-	<x-spinner id="spinner" label="Loading..." fade></x-spinner>
+	<x-spinner id="spinner" label="Loading" fade></x-spinner>
 
 
 </body>
@@ -28,7 +28,6 @@
   xtag.addEvents(document, {
     'tap:delegate(#toggle)': function(){
       spinner.toggle();
-
     }
   });
 </script>
